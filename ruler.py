@@ -1,4 +1,7 @@
-import sys, os, mimetypes
+import mimetypes
+import os
+import sys
+
 
 class TreeInfo:
     class DirInfo:
@@ -17,12 +20,16 @@ class TreeInfo:
             self.path = path
             self.files = []
 
+        def lines(self) -> int:
+            return sum(f.lines for f in self.files)
+
         path: str
         files: list[FileInfo]
-        lines = lambda self: sum(f.lines for f in self.files)
+
+    def lines(self) -> int:
+        return sum(d.lines() for d in self.dirs)
 
     dirs: list[DirInfo] = []
-    lines = lambda self: sum(d.lines() for d in self.dirs)
 
 
 def main():
@@ -35,13 +42,18 @@ def main():
     root_path = sys.argv[1]
     tree_info = TreeInfo()
     for location, dirs, files in os.walk(root_path):
-        rel_location = location[len(root_path):]
-        if any(rel_location.startswith(exclude_path) if exclude_path.startswith(os.sep) else exclude_path in rel_location for exclude_path in exclude_paths):
+        rel_location = location[len(root_path) :]
+        if any(
+            rel_location.startswith(exclude_path)
+            if exclude_path.startswith(os.sep)
+            else exclude_path in rel_location
+            for exclude_path in exclude_paths
+        ):
             continue
         dir_info = TreeInfo.DirInfo(rel_location)
         for file in files:
             file_type = mimetypes.guess_type(file)[0]
-            if file_type is not None and file_type.startswith('text'):
+            if file_type is not None and file_type.startswith(('text', 'application')):
                 with open(os.path.join(location, file)) as f:
                     file_lines = len(f.readlines())
                     dir_info.files.append(TreeInfo.DirInfo.FileInfo(file, file_lines))
@@ -59,12 +71,13 @@ def main():
                 print(f'{dir_info.path}: {dir_lines} ({dir_lines_percent}%)')
                 for file_info in dir_info.files:
                     file_lines_percent = file_info.lines * 100 // dir_lines
-                    if file_lines_percent: 
+                    if file_lines_percent:
                         print(f'    {file_info.name}: {str(file_info.lines)} ({file_lines_percent}%)')
                 print()
     else:
         print('No text files found')
     print(f'Total {total_lines} lines')
+
 
 if __name__ == '__main__':
     main()
