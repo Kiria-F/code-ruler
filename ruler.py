@@ -52,12 +52,16 @@ def main():
     tree_info.dirs.sort(key=lambda d: d.lines(), reverse=True)
     if len(tree_info.dirs) > 0:
         for dir_info in tree_info.dirs:
-            dir_info.files.sort(key=lambda f: f.lines, reverse=True)
             dir_lines = dir_info.lines()
-            print(f'{dir_info.path}: {dir_lines} ({dir_lines * 100 // total_lines}%)')
-            for file_info in dir_info.files:
-                print(f'    {file_info.name}: {str(file_info.lines)} ({file_info.lines * 100 // dir_lines}%)')
-            print()
+            dir_lines_percent = dir_lines * 100 // total_lines
+            if dir_lines_percent:
+                dir_info.files.sort(key=lambda f: f.lines, reverse=True)
+                print(f'{dir_info.path}: {dir_lines} ({dir_lines_percent}%)')
+                for file_info in dir_info.files:
+                    file_lines_percent = file_info.lines * 100 // dir_lines
+                    if file_lines_percent: 
+                        print(f'    {file_info.name}: {str(file_info.lines)} ({file_lines_percent}%)')
+                print()
     else:
         print('No text files found')
     print(f'Total {total_lines} lines')
