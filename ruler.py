@@ -91,7 +91,7 @@ def main():
             dir_lines_percent = dir_lines * 100 // total_lines
             if dir_lines_percent:
                 dir_info.files.sort(key=lambda f: f.lines, reverse=True)
-                print(f'{dir_info.path if dir_info.path else "/"}: {dir_lines} ({dir_lines_percent}%)')
+                print(f'{dir_info.path if dir_info.path else os.sep}: {dir_lines} ({dir_lines_percent}%)')
                 for file_info in dir_info.files:
                     file_lines_percent = file_info.lines * 100 // dir_lines
                     if file_lines_percent:
