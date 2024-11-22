@@ -31,6 +31,13 @@ class TreeInfo:
 
     dirs: list[DirInfo] = []
 
+def reprint(
+    *values: object,
+    sep: str | None = " ",
+    end: str | None = "\n",):
+
+    print('\033[1G\033[1A\033[0J', end='')
+    print(*values, sep=sep, end=end)
 
 def main():
     if len(sys.argv) < 2:
@@ -41,7 +48,19 @@ def main():
     exclude_paths = sys.argv[2:]
     root_path = sys.argv[1]
     tree_info = TreeInfo()
-    for location, dirs, files in os.walk(root_path):
+    files_count = 0
+    print('Scanning files...')
+    print('Found: 0')
+    progress_line_length = 58
+    for _, _, files in os.walk(root_path):
+        files_count += len(files)
+        reprint(f'Found: {files_count}')
+    print(f'[{" " * progress_line_length}]')
+    files_processed = 0
+    for location, _, files in os.walk(root_path):
+        files_processed += len(files)
+        progress = files_processed * progress_line_length // files_count
+        reprint(f'[{"#" * progress}{" " * (progress_line_length - progress)}]')
         rel_location = location[len(root_path) :]
         if any(
             rel_location.startswith(exclude_path)
@@ -52,14 +71,18 @@ def main():
             continue
         dir_info = TreeInfo.DirInfo(rel_location)
         for file in files:
-            file_type = mimetypes.guess_type(file)[0]
-            if file_type is not None and file_type.startswith(('text', 'application')):
+            if file in exclude_paths:
+                continue
+            try:
                 with open(os.path.join(location, file)) as f:
                     file_lines = len(f.readlines())
                     dir_info.files.append(TreeInfo.DirInfo.FileInfo(file, file_lines))
+            except UnicodeDecodeError:
+                continue
         if len(dir_info.files) > 0:
             tree_info.dirs.append(dir_info)
 
+    print()
     total_lines = tree_info.lines()
     tree_info.dirs.sort(key=lambda d: d.lines(), reverse=True)
     if len(tree_info.dirs) > 0:
@@ -68,7 +91,7 @@ def main():
             dir_lines_percent = dir_lines * 100 // total_lines
             if dir_lines_percent:
                 dir_info.files.sort(key=lambda f: f.lines, reverse=True)
-                print(f'{dir_info.path}: {dir_lines} ({dir_lines_percent}%)')
+                print(f'{dir_info.path if dir_info.path else "/"}: {dir_lines} ({dir_lines_percent}%)')
                 for file_info in dir_info.files:
                     file_lines_percent = file_info.lines * 100 // dir_lines
                     if file_lines_percent:
