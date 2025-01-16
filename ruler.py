@@ -33,46 +33,65 @@ class TreeInfo:
 
 def reprint(
     *values: object,
-    sep: str | None = " ",
-    end: str | None = "\n",
+    sep: str | None = ' ',
+    end: str | None = '\n',
 ):
-    print("\033[1G\033[1A\033[0J", end="")
+    print('\033[1G\033[1A\033[0J', end='')
     print(*values, sep=sep, end=end)
 
 
+def ignored(ignore_paths: list[str], rel_location: str, file: str = '') -> bool:
+    for ignore_path in ignore_paths:
+        from_root = ignore_path.startswith(os.sep)
+        dir_only = ignore_path.endswith(os.sep)
+        rule = ignore_path.removeprefix(os.sep).removesuffix(os.sep)
+        path = os.path.join(rel_location.removeprefix(os.sep), file).split(os.sep)
+        if from_root:
+            if dir_only:
+                if len(path) > 1 and path[0] == rule:
+                    return True
+            else:
+                if path[0] == rule:
+                    return True
+        else:
+            if dir_only:
+                if rule in path and path.index(rule) < len(path) - 1:
+                    return True
+            else:
+                if rule in path:
+                    return True
+    return False
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("Counts lines of code (actually any text files) in a selected directory.")
-        print(f"Usage: python {os.path.basename(__file__)} <path> [exclude]...")
-        print(
-            f"Example: python {os.path.basename(__file__)} {os.sep}{os.path.join('Users', 'u', 'Code', 'some-project')} {os.sep}venv {os.sep}.git {os.sep}.vscode __pycache__"
-        )
+    if len(sys.argv) != 2:
+        print('Counts lines of code (actually any text files) in a selected directory.')
+        print(f'Usage: python {os.path.basename(__file__)} <path>')
         return
-    exclude_paths = sys.argv[2:]
-    root_path = sys.argv[1]
+    project_path = sys.argv[1]
+    project_path = project_path.removesuffix(os.sep)
+    ignore_paths = ['.git/']
+    if os.path.isfile(os.path.join(project_path, '.gitignore')):
+        with open(os.path.join(project_path, '.gitignore')) as f:
+            ignore_paths += map(lambda line: line.removesuffix('\n'), f.readlines())
+    ignore_paths = list(map(lambda path: path.replace('/', os.sep), ignore_paths))
     tree_info = TreeInfo()
     files_count = 0
-    print("Scanning files...")
-    print("Found: 0")
+    print('Scanning files...')
+    print('Found: 0')
     progress_line_length = 58
-    for _, _, files in os.walk(root_path):
+    for _, _, files in os.walk(project_path):
         files_count += len(files)
-        reprint(f"Found: {files_count}")
-    print(f"[{' ' * progress_line_length}]")
+        reprint(f'Found: {files_count}')
+    print(f'[{" " * progress_line_length}]')
     files_processed = 0
-    for location, _, files in os.walk(root_path):
-        files_processed += len(files)
-        progress = files_processed * progress_line_length // files_count
-        reprint(f"[{'#' * progress}{' ' * (progress_line_length - progress)}]")
-        rel_location = location[len(root_path) :]
-        if any(
-            rel_location.startswith(exclude_path) if exclude_path.startswith(os.sep) else exclude_path in rel_location
-            for exclude_path in exclude_paths
-        ):
+    for location, _, files in os.walk(project_path):
+        rel_location = location[len(project_path) :]
+        if ignored(ignore_paths, rel_location):
             continue
         dir_info = TreeInfo.DirInfo(rel_location)
         for file in files:
-            if file in exclude_paths:
+            if ignored(ignore_paths, rel_location, file):
                 continue
             try:
                 with open(os.path.join(location, file)) as f:
@@ -82,6 +101,9 @@ def main():
                 continue
         if len(dir_info.files) > 0:
             tree_info.dirs.append(dir_info)
+        files_processed += len(files)
+        progress = files_processed * progress_line_length // files_count
+        reprint(f'[{"#" * progress}{" " * (progress_line_length - progress)}]')
 
     print()
     total_lines = tree_info.lines()
@@ -92,16 +114,16 @@ def main():
             dir_lines_percent = dir_lines * 100 // total_lines
             if dir_lines_percent:
                 dir_info.files.sort(key=lambda f: f.lines, reverse=True)
-                print(f"{dir_info.path if dir_info.path else os.sep}: {dir_lines} ({dir_lines_percent}%)")
+                print(f'{dir_info.path if dir_info.path else os.sep}: {dir_lines} ({dir_lines_percent}%)')
                 for file_info in dir_info.files:
                     file_lines_percent = file_info.lines * 100 // dir_lines
                     if file_lines_percent:
-                        print(f"    {file_info.name}: {str(file_info.lines)} ({file_lines_percent}%)")
+                        print(f'    {file_info.name}: {str(file_info.lines)} ({file_lines_percent}%)')
                 print()
     else:
-        print("No text files found")
-    print(f"Total {total_lines} lines")
+        print('No text files found')
+    print(f'Total {total_lines} lines')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
