@@ -1,34 +1,9 @@
+from __future__ import annotations
+
 import os
 import sys
-
-
-class TreeInfo:
-    class DirInfo:
-        class FileInfo:
-            def __init__(self, name: str, lines: int = 0) -> None:
-                self.name = name
-                self.lines = lines
-
-            def __str__(self) -> str:
-                return self.name
-
-            name: str
-            lines: int
-
-        def __init__(self, path: str) -> None:
-            self.path = path
-            self.files = []
-
-        def lines(self) -> int:
-            return sum(f.lines for f in self.files)
-
-        path: str
-        files: list[FileInfo]
-
-    def lines(self) -> int:
-        return sum(d.lines() for d in self.dirs)
-
-    dirs: list[DirInfo] = []
+from pathlib import Path
+from pathspec import PathSpec
 
 
 def reprint(
@@ -40,27 +15,100 @@ def reprint(
     print(*values, sep=sep, end=end)
 
 
-def ignored(ignore_paths: list[str], rel_location: str, file: str = '') -> bool:
-    for ignore_path in ignore_paths:
-        from_root = ignore_path.startswith(os.sep)
-        dir_only = ignore_path.endswith(os.sep)
-        rule = ignore_path.removeprefix(os.sep).removesuffix(os.sep)
-        path = os.path.join(rel_location.removeprefix(os.sep), file).split(os.sep)
-        if from_root:
-            if dir_only:
-                if len(path) > 1 and path[0] == rule:
-                    return True
-            else:
-                if path[0] == rule:
-                    return True
-        else:
-            if dir_only:
-                if rule in path and path.index(rule) < len(path) - 1:
-                    return True
-            else:
-                if rule in path:
-                    return True
-    return False
+class Validator:
+    empty: bool
+    spec: PathSpec
+    path: Path
+
+    def __init__(self, path: Path) -> None:
+        if not (path / '.gitignore').is_file():
+            self.empty = True
+            return
+        self.empty = False
+        self.path = path
+        with open(path / '.gitignore') as f:
+            self.spec = PathSpec.from_lines('gitwildmatch', f.readlines())
+
+    def validate(self, path: Path) -> bool:
+        if self.empty:
+            return True
+        rel_path = path.relative_to(self.path)
+        return not self.spec.match_file(rel_path)
+
+
+class FileInfo:
+    path: Path
+    lines_cache: int | None
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.lines_cache = None
+
+    @property
+    def lines(self) -> int:
+        if self.lines_cache is None:
+            with open(self.path) as f:
+                try:
+                    self.lines_cache = len(f.readlines())
+                except UnicodeDecodeError:
+                    self.lines_cache = 0
+        return self.lines_cache
+
+    def __str__(self) -> str:
+        return self.path.name
+
+
+class DirInfo:
+    path: Path
+    parent: DirInfo | None = None
+    children: list[FileInfo | DirInfo]
+    validator: Validator
+    lines_cache: int | None
+    scan_counter: int = 0
+
+    def __init__(self, path: Path, parent: DirInfo | None = None) -> None:
+        self.path = path
+        self.children = []
+        self.validator = Validator(self.path)
+        self.parent = parent
+        self.lines_cache = None
+
+        for child in self.path.iterdir():
+            if self.validate(child) and child.name != '.git':
+                if child.is_file():
+                    self.children.append(FileInfo(child))
+                    DirInfo.scan_counter += 1
+                    print(f'Found {DirInfo.scan_counter}', end='\r')
+                elif child.is_dir():
+                    self.children.append(DirInfo(child, self))
+
+    @property
+    def lines(self) -> int:
+        if self.lines_cache is None:
+            self.lines_cache = sum(f.lines for f in self.children)
+        return self.lines_cache
+
+    def validate(self, filename: Path) -> bool:
+        if not self.validator.validate(filename):
+            return False
+        if self.parent is not None:
+            return self.parent.validate(filename)
+        return True
+    
+    def describe(self, level: int = 0) -> None:
+        indent = '    ' * level
+        print(f'{indent}{self.path.name}: {self.lines} lines {self.parent.percent(self.lines) if self.parent else "(100%)"}')
+        for child in sorted(filter(lambda child: child.lines, self.children), key=lambda c: c.lines, reverse=True):
+            if isinstance(child, FileInfo):
+                print(f'{indent}    {child}: {child.lines} lines {self.percent(child.lines)}')
+            elif isinstance(child, DirInfo):
+                child.describe(level + 1)
+
+    def percent(self, lines: int) -> str:
+        percent = int(lines / self.lines * 100)
+        if percent == 0:
+            return '(<1%)'
+        return f'({percent}%)'
 
 
 def main():
@@ -68,61 +116,15 @@ def main():
         print('Counts lines of code (actually any text files) in a selected directory.')
         print(f'Usage: python {os.path.basename(__file__)} <path>')
         return
-    project_path = sys.argv[1]
-    project_path = project_path.removesuffix(os.sep)
-    ignore_paths = ['.git/']
-    if os.path.isfile(os.path.join(project_path, '.gitignore')):
-        with open(os.path.join(project_path, '.gitignore')) as f:
-            ignore_paths += map(lambda line: line.removesuffix('\n'), f.readlines())
-    ignore_paths = list(map(lambda path: path.replace('/', os.sep), ignore_paths))
-    tree_info = TreeInfo()
-    files_count = 0
-    print('Scanning files...')
-    print('Found: 0')
-    progress_line_length = 58
-    for _, _, files in os.walk(project_path):
-        files_count += len(files)
-        reprint(f'Found: {files_count}')
-    print(f'[{" " * progress_line_length}]')
-    files_processed = 0
-    for location, _, files in os.walk(project_path):
-        rel_location = location[len(project_path) :]
-        if ignored(ignore_paths, rel_location):
-            continue
-        dir_info = TreeInfo.DirInfo(rel_location)
-        for file in files:
-            if ignored(ignore_paths, rel_location, file):
-                continue
-            try:
-                with open(os.path.join(location, file)) as f:
-                    file_lines = len(f.readlines())
-                    dir_info.files.append(TreeInfo.DirInfo.FileInfo(file, file_lines))
-            except UnicodeDecodeError:
-                continue
-        if len(dir_info.files) > 0:
-            tree_info.dirs.append(dir_info)
-        files_processed += len(files)
-        progress = files_processed * progress_line_length // files_count
-        reprint(f'[{"#" * progress}{" " * (progress_line_length - progress)}]')
-
-    print()
-    total_lines = tree_info.lines()
-    tree_info.dirs.sort(key=lambda d: d.lines(), reverse=True)
-    if len(tree_info.dirs) > 0:
-        for dir_info in tree_info.dirs:
-            dir_lines = dir_info.lines()
-            dir_lines_percent = dir_lines * 100 // total_lines
-            if dir_lines_percent:
-                dir_info.files.sort(key=lambda f: f.lines, reverse=True)
-                print(f'{dir_info.path if dir_info.path else os.sep}: {dir_lines} ({dir_lines_percent}%)')
-                for file_info in dir_info.files:
-                    file_lines_percent = file_info.lines * 100 // dir_lines
-                    if file_lines_percent:
-                        print(f'    {file_info.name}: {str(file_info.lines)} ({file_lines_percent}%)')
-                print()
-    else:
-        print('No text files found')
-    print(f'Total {total_lines} lines')
+    project_path = Path(sys.argv[1])
+    if not project_path.is_dir():
+        print(f'Error: {project_path} is not a directory')
+        return
+    os.chdir(project_path)
+    print(f'Scanning {project_path}...')
+    dir_info = DirInfo(project_path)
+    print('Scan complete.\n')
+    dir_info.describe()
 
 
 if __name__ == '__main__':
