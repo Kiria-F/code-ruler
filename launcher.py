@@ -73,7 +73,7 @@ def main():
     clear_screen()
     # os.execve(str(Global.python_bin), [str(Global.python_bin), str(Global.script)], env)
 
-    subprocess.run([str(Global.python_bin), str(Global.script)], env=env)
+    subprocess.run([str(Global.python_bin), str(Global.script)] + sys.argv[1:], env=env)
 
 
 if __name__ == '__main__':
