@@ -8,7 +8,7 @@
       "name": "Python Debugger: Current File with Arguments",
       "type": "debugpy",
       "request": "launch",
-      "program": "ruler.py",
+      "program": "launcher.py",
       "console": "integratedTerminal",
       "args": ["D:\\Code\\Python\\mas-universal-model"]
     }
