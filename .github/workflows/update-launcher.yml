@@ -1,4 +1,4 @@
-name: Sync launcher.py from py-launcher
+name: Update launcher
 
 on:
   schedule:
