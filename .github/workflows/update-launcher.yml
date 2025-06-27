@@ -9,6 +9,14 @@ jobs:
   sync-launcher:
     runs-on: ubuntu-latest
     steps:
+      - name: Set up vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "SOURCE=manually" >> $GITHUB_ENV
+          else
+            echo "SOURCE=automatically" >> $GITHUB_ENV
+          fi
+    
       - name: Checkout this repo
         uses: actions/checkout@v4
 
@@ -21,4 +29,4 @@ jobs:
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
           git add launcher.py
-          git diff --cached --quiet || git commit -m "Sync launcher.py from py-launcher" && git push
+          git diff --cached --quiet || git commit -m "Update launcher.py ($SOURCE)" && git push
