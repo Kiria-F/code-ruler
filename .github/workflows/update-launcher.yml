@@ -1,0 +1,24 @@
+name: Sync launcher.py from py-launcher
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # каждый день в 3 утра
+  workflow_dispatch:
+
+jobs:
+  sync-launcher:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Download launcher.py from py-launcher
+        run: |
+          curl -s -o launcher.py https://raw.githubusercontent.com/Kiria-F/py-launcher/master/launcher.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add launcher.py
+          git diff --cached --quiet || git commit -m "Sync launcher.py from py-launcher" && git push
