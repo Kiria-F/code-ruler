@@ -58,6 +58,13 @@ def main():
     if Global.requirements.exists() and not Global.python_bin.exists():
         create_venv()
         install_requirements()
+    if not Global.script.exists():
+        print(f'🚨 Скрипт {Global.script} не найден. Проверьте конфигурацию.')
+        return
+
+    if not Global.python_path.exists():
+        print(f'🚨 PYTHONPATH {Global.python_path} не найден. Проверьте конфигурацию.')
+        return
 
     env = os.environ.copy()
     env['PYTHONPATH'] = str(Global.python_path)
